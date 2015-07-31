@@ -288,12 +288,11 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         if ($this->lateststeps[$attempt->usageid][$slot]->questionid <> $questionid) {
             return get_string('notanswered', 'quiz_randomsummary'); // This random question wasn't answer by this user.
         }
-
         if ($this->is_downloading()) {
-            $state = $this->slot_state($attempt, $slot);
+            $stepdata = $this->lateststeps[$attempt->usageid][$slot];
+            $state = question_state::get($stepdata->state);
             if ($state->is_finished() && $state != question_state::$needsgrading) {
-                $fraction = $this->slot_fraction($attempt, $slot);
-                $feedbackclass = question_state::graded_state_for_fraction($fraction)->get_feedback_class();
+                $feedbackclass = question_state::graded_state_for_fraction($stepdata->fraction)->get_feedback_class();
 
                 return get_string($feedbackclass, 'question');
             }
@@ -329,23 +328,18 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
     public function make_review_link($data, $attempt, $slot) {
         global $OUTPUT;
 
-        $flag = '';
-        if ($this->is_flagged($attempt->usageid, $slot)) {
-            $flag = $OUTPUT->pix_icon('i/flagged', get_string('flagged', 'question'),
-                'moodle', array('class' => 'questionflag'));
-        }
-
         $feedbackimg = '';
-        $state = $this->slot_state($attempt, $slot);
+        $stepdata = $this->lateststeps[$attempt->usageid][$slot];
+        $state = question_state::get($stepdata->state);
+
         if ($state->is_finished() && $state != question_state::$needsgrading) {
-            $fraction = $this->slot_fraction($attempt, $slot);
-            $feedbackimg = $this->icon_for_fraction($fraction);
-            $feedbackclass = question_state::graded_state_for_fraction($fraction)->get_feedback_class();
+            $feedbackimg = $this->icon_for_fraction($stepdata->fraction);
+            $feedbackclass = question_state::graded_state_for_fraction($stepdata->fraction)->get_feedback_class();
             $data = get_string($feedbackclass, 'question');
         }
 
         $output = html_writer::tag('span', $feedbackimg . html_writer::tag('span',
-                $data, array('class' => $state->get_state_class(true))) . $flag, array('class' => 'que'));
+                $data, array('class' => $state->get_state_class(true))), array('class' => 'que'));
 
         $reviewparams = array('attempt' => $attempt->attempt, 'slot' => $slot);
         if (isset($attempt->try)) {
@@ -377,7 +371,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         // Get Slot ids from $this->questions.
         $slots = array();
         foreach ($this->questions as $question) {
-            $slots[] = $question->slot;
+            $slots[] = $question->qid;
         }
 
         // Check to see if we need to pull in any other slots/questions - used to display the student response to certain questions.
@@ -420,32 +414,35 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
         list($slottest, $params) = $this->db->get_in_or_equal($slots, SQL_PARAMS_NAMED, 'slot');
 
         $rs = $this->db->get_recordset_sql("
-          SELECT qa.slot,
-               qa.questionid,
-               q.name,
-               qas.state,
-               COUNT(1) AS numstate
+            SELECT
+                qa.slot,
+                qa.questionid,
+                q.name,
+                qas.state,
+                COUNT(1) AS numstate
 
-           FROM {$qubaids->from_question_attempts('qa')}
-           JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
-               AND qas.sequencenumber = {$this->latest_step_for_qa_subquery()}
-           JOIN {question} q ON q.id = qa.questionid
+            FROM {$qubaids->from_question_attempts('qa')}
+            JOIN {question_attempt_steps} qas ON
+                    qas.id = {$this->latest_step_for_qa_subquery()}
+            JOIN {question} q ON q.id = qa.questionid
 
-          WHERE {$qubaids->where()} AND qa.slot $slottest
+            WHERE
+                {$qubaids->where()} AND
+                qa.slot $slottest
 
-          GROUP BY
-            qa.slot,
-            qa.questionid,
-            q.name,
-            q.id,
-            qas.state
+            GROUP BY
+                qa.slot,
+                qa.questionid,
+                q.name,
+                q.id,
+                qas.state
 
-          ORDER BY
-           qa.slot,
-           qa.questionid,
-           q.name,
-           q.id
-           ", $params + $qubaids->from_where_params());
+            ORDER BY
+                qa.slot,
+                qa.questionid,
+                q.name,
+                q.id
+                    ", $params + $qubaids->from_where_params());
 
         $results = array();
         foreach ($rs as $row) {

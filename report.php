@@ -71,18 +71,27 @@ class quiz_randomsummary_report extends quiz_attempts_report {
         // Load the required questions.
         // First get all Random questions within this quiz.
 
+        $questionids = quiz_questions_in_quiz($quiz->questions);
+
         $questions = $DB->get_records_sql("
-            SELECT q2.id as id, q.id as qid, slot.slot, q2.length, slot.maxmark, q2.name
+            SELECT q2.id as id, q.id as qid, q2.length, qqi.grade as maxmark, q2.name
               FROM mdl_question q
-              JOIN {quiz_slots} slot ON slot.questionid = q.id
+              JOIN {quiz_question_instances} qqi ON qqi.question = q.id
               JOIN {question} q2 on q.category = q2.category
-             WHERE slot.quizid = ?
+             WHERE qqi.quiz = ?
                AND q.length > 0
                AND q.qtype = 'random'
                AND q2.qtype <> 'random'", array($quiz->id));
-
         $number = 1;
+
+        $slottranslation = array();
+        foreach (explode(',', $questionids) as $key => $id) {
+            $slottranslation[$id] = $key +1;
+        }
+        $slottranslationrev = array_flip($slottranslation);
+
         foreach ($questions as $question) {
+            $questions[$question->id]->slot = $slottranslation[$question->qid];
             $question->number = $number;
             $number += $question->length;
         }
@@ -124,7 +133,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             }
         }
 
-        $hasquestions = quiz_has_questions($quiz->id);
+        $hasquestions = quiz_questions_in_quiz($quiz->questions);
         if (!$table->is_downloading()) {
             if (!$hasquestions) {
                 echo quiz_no_questions_message($quiz, $cm, $this->context);
@@ -182,7 +191,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             foreach ($questions as $slot => $question) {
                 // Ignore questions of zero length.
                 $columns[] = 'qsgrade' . $slot;
-                $header = get_string('qbrief', 'quiz', $question->slot);
+                $header = get_string('qbrief', 'quiz', $question->qid);
                 if (!$table->is_downloading()) {
                     $header .= '<br />';
                 } else {
@@ -194,21 +203,27 @@ class quiz_randomsummary_report extends quiz_attempts_report {
 
             // Check to see if we need to add columns for the student responses.
             $responsecolumnconfig = get_config('quiz_randomsummary', 'showstudentresponse');
+
             if (!empty($responsecolumnconfig)) {
                 $responsecolumns = array_filter(explode(',', $responsecolumnconfig));
+                $extraqids = array();
+                foreach ($responsecolumns as $rspc) {
+                    if (!empty($slottranslationrev[$rspc])) {
+                        $extraqids[] = $slottranslationrev[$rspc];
+                    }
+                }
                 // Get the question names for these columns to display in the header.
-                list($sql, $params) = $DB->get_in_or_equal($responsecolumns, SQL_PARAMS_NAMED);
+                list($sql, $params) = $DB->get_in_or_equal($extraqids, SQL_PARAMS_NAMED);
                 $params['quizid'] = $quiz->id;
 
                 $responseqs = $DB->get_records_sql("
-                    SELECT slot.slot, q.name
-                      FROM mdl_question q
-                      JOIN {quiz_slots} slot ON slot.questionid = q.id
-                    WHERE slot.quizid = :quizid AND q.length > 0
-                      AND slot.slot ".$sql." ORDER BY slot.slot", $params);
-
+                    SELECT qqi.id, q.name, q.id as qid
+                      FROM {question} q
+                      JOIN {quiz_question_instances} qqi ON qqi.question = q.id
+                    WHERE qqi.quiz = :quizid AND q.length > 0
+                      AND q.id ".$sql, $params);
                 foreach ($responseqs as $rq) {
-                    $columns[] = 'qsresponse'.$rq->slot;
+                    $columns[] = 'qsresponse'.$slottranslation[$rq->qid];
                     if (!empty($rq->name)) {
                         $headers[] = format_string($rq->name);
                     } else {
