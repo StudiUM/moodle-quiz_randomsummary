@@ -68,13 +68,20 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             $allowed = array();
         }
 
+        // Create translation array to show which questions are in which slot.
+        $questionids = quiz_questions_in_quiz($quiz->questions);
+        $slottranslation = array();
+        foreach (explode(',', $questionids) as $key => $id) {
+            $slottranslation[$id] = $key +1;
+        }
+
+        $slottranslationrev = array_flip($slottranslation);
+
         // Load the required questions.
         // First get all Random questions within this quiz.
-
-        $questionids = quiz_questions_in_quiz($quiz->questions);
-
-        $questions = $DB->get_records_sql("
-            SELECT q2.id as id, q.id as qid, q2.length, qqi.grade as maxmark, q2.name
+        $idfield = $DB->sql_concat('q2.id', 'q.id');
+        $questionsraw = $DB->get_records_sql("
+            SELECT $idfield as id, q2.id as q2id, q.id as qid, q2.length, qqi.grade as maxmark, q2.name
               FROM {question} q
               JOIN {quiz_question_instances} qqi ON qqi.question = q.id
               JOIN {question} q2 on q.category = q2.category
@@ -84,16 +91,19 @@ class quiz_randomsummary_report extends quiz_attempts_report {
                AND q2.qtype <> 'random'", array($quiz->id));
         $number = 1;
 
-        $slottranslation = array();
-        foreach (explode(',', $questionids) as $key => $id) {
-            $slottranslation[$id] = $key +1;
-        }
-        $slottranslationrev = array_flip($slottranslation);
+        $questions = array();
+        foreach ($questionsraw as $question) {
+            if (!isset($questions[$question->q2id])) {
+                $questions[$question->q2id] = $question;
+                $questions[$question->q2id]->slots = array();
+            }
 
-        foreach ($questions as $question) {
-            $questions[$question->id]->slot = $slottranslation[$question->qid];
-            $question->number = $number;
-            $number += $question->length;
+            $questions[$question->q2id]->slots[] = $slottranslation[$question->qid];;
+            $questions[$question->q2id]->number = $number;
+            $number += $questions[$question->q2id]->length;
+
+            // is this still needed?
+            $questions[$question->q2id]->slot = $slottranslation[$question->qid];
         }
 
         // Prepare for downloading, if applicable.
@@ -191,7 +201,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             foreach ($questions as $slot => $question) {
                 // Ignore questions of zero length.
                 $columns[] = 'qsgrade' . $slot;
-                $header = get_string('qbrief', 'quiz', $question->qid);
+                $header = get_string('qbrief', 'quiz', implode($question->slots, ', '));
                 if (!$table->is_downloading()) {
                     $header .= '<br />';
                 } else {
