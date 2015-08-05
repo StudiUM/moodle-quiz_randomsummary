@@ -75,7 +75,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
 
         $questions = $DB->get_records_sql("
             SELECT q2.id as id, q.id as qid, q2.length, qqi.grade as maxmark, q2.name
-              FROM mdl_question q
+              FROM {question} q
               JOIN {quiz_question_instances} qqi ON qqi.question = q.id
               JOIN {question} q2 on q.category = q2.category
              WHERE qqi.quiz = ?
