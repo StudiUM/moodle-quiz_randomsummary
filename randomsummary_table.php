@@ -340,6 +340,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         $foundquestion = false;
         foreach ($this->lateststeps[$attempt->usageid] as $sl) {
             if ($sl->questionid == $questionid) {
+                $slot = $sl->slot;
                 $foundquestion = true;
             }
 
@@ -475,11 +476,9 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
      */
     public function load_questions_usages_question_state_summary(
         qubaid_condition $qubaids, $slots) {
-        list($slottest, $params) = $this->db->get_in_or_equal($slots, SQL_PARAMS_NAMED, 'slot');
 
         $rs = $this->db->get_recordset_sql("
             SELECT
-                qa.slot,
                 qa.questionid,
                 q.name,
                 qas.state,
@@ -491,38 +490,31 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
             JOIN {question} q ON q.id = qa.questionid
 
             WHERE
-                {$qubaids->where()} AND
-                qa.slot $slottest
+                {$qubaids->where()}
 
             GROUP BY
-                qa.slot,
                 qa.questionid,
                 q.name,
                 q.id,
                 qas.state
 
             ORDER BY
-                qa.slot,
                 qa.questionid,
                 q.name,
                 q.id
-                    ", $params + $qubaids->from_where_params());
-
+                    ", $qubaids->from_where_params());
         $results = array();
         foreach ($rs as $row) {
-            $index = $row->slot . ',' . $row->questionid;
-
-            if (!array_key_exists($index, $results)) {
+            if (!array_key_exists($row->questionid, $results)) {
                 $res = new stdClass();
-                $res->slot = $row->slot;
                 $res->questionid = $row->questionid;
                 $res->name = $row->name;
                 $res->all = 0;
-                $results[$index] = $res;
+                $results[$row->questionid] = $res;
             }
-            $results[$index]->{$row->state} = $row->numstate;
+            $results[$row->questionid]->{$row->state} = $row->numstate;
 
-            $results[$index]->all += $row->numstate;
+            $results[$row->questionid]->all += $row->numstate;
         }
         $rs->close();
 
