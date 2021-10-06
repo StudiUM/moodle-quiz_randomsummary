@@ -43,15 +43,16 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
      * @param context $context
      * @param string $qmsubselect
      * @param quiz_randomsummary_options $options
-     * @param array $groupstudents
-     * @param array $students
+     * @param \core\dml\sql_join $groupstudentsjoins
+     * @param \core\dml\sql_join $studentsjoins
      * @param array $questions
      * @param moodle_url $reporturl
      */
     public function __construct($quiz, $context, $qmsubselect,
-            quiz_randomsummary_options $options, $groupstudents, $students, $questions, $reporturl) {
+            quiz_randomsummary_options $options, \core\dml\sql_join $groupstudentsjoins,
+            \core\dml\sql_join $studentsjoins, $questions, $reporturl) {
         parent::__construct('mod-quiz-report-randomsummary-report', $quiz , $context,
-                $qmsubselect, $options, $groupstudents, $students, $questions, $reporturl);
+                $qmsubselect, $options, $groupstudentsjoins, $studentsjoins, $questions, $reporturl);
     }
 
     /**
@@ -63,6 +64,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
      * @return void
      */
     public function build_table() {
+        global $DB;
         if (!$this->rawdata) {
             return;
         }
@@ -73,12 +75,26 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         // End of adding the data from attempts. Now add averages at bottom.
         $this->add_separator();
 
-        if ($this->groupstudents) {
-            $this->add_average_row(get_string('groupavg', 'grades'), $this->groupstudents);
+        if (!empty($this->groupstudentsjoins->joins)) {
+            $sql = "SELECT DISTINCT u.id
+                      FROM {user} u
+                    {$this->groupstudentsjoins->joins}
+                     WHERE {$this->groupstudentsjoins->wheres}";
+            $groupstudents = $DB->get_records_sql($sql, $this->groupstudentsjoins->params);
+            if ($groupstudents) {
+                $this->add_average_row(get_string('groupavg', 'grades'), $this->groupstudentsjoins);
+            }
         }
 
-        if ($this->students) {
-            $this->add_average_row(get_string('overallaverage', 'grades'), $this->students);
+        if (!empty($this->studentsjoins->joins)) {
+            $sql = "SELECT DISTINCT u.id
+                      FROM {user} u
+                    {$this->studentsjoins->joins}
+                     WHERE {$this->studentsjoins->wheres}";
+            $students = $DB->get_records_sql($sql, $this->studentsjoins->params);
+            if ($students) {
+                $this->add_average_row(get_string('overallaverage', 'grades'), $this->studentsjoins);
+            }
         }
     }
 
@@ -157,7 +173,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
 
         $this->add_separator();
 
-        // Add Total Attempts. (Only get non-empty quiza.preview states.)
+        // Add Total Attempts. (Only get non-empty quiza.preview states).
         $value = $DB->get_field_sql("
                 SELECT count(*)
                   FROM $from
@@ -195,13 +211,19 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         $item = grade_item::fetch(array('courseid' => $this->quiz->course, 'itemtype' => 'mod',
             'itemmodule' => 'quiz', 'iteminstance' => $this->quiz->id, 'outcomeid' => null));
         if (!empty($item->gradepass)) {
-            $params['gradepass'] = $item->gradepass;
+            $users = $DB->get_records_sql("
+                SELECT DISTINCT quiza.userid
+                  FROM $from
+                 WHERE $where", $params);
+            $params['gradepass'] = grade_floatval($item->gradepass);
+            $params['qgrade'] = $this->quiz->grade;
+            $params['qsumgrades'] = $this->quiz->sumgrades;
 
             // Add Passed Attempts.
             $numpassed = $DB->get_field_sql("
             SELECT count(*) as numpassed
               FROM $from
-             WHERE $where AND quiza.sumgrades >= :gradepass", $params);
+             WHERE $where AND (quiza.sumgrades * :qgrade / :qsumgrades) >= :gradepass", $params);
             $row = array($namekey => get_string('passedattempts', 'quiz_randomsummary'),
                        'state' => $numpassed);
             $this->add_data_keyed($row);
@@ -210,25 +232,47 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $numfailed = $DB->get_field_sql("
             SELECT count(*)
               FROM $from
-             WHERE $where AND quiza.sumgrades < :gradepass", $params);
+             WHERE $where AND (quiza.sumgrades * :qgrade / :qsumgrades) < :gradepass", $params);
             $row = array($namekey => get_string('failedattempts', 'quiz_randomsummary'),
                     'state' => $numfailed);
             $this->add_data_keyed($row);
 
+            $numfailed = 0;
+            $numpassed = 0;
+            foreach ($users as $user) {
+                $attempts = quiz_get_user_attempts($this->quiz->id, $user->userid, 'finished');
+                $attempt = null;
+                switch ($this->quiz->grademethod) {
+                    case QUIZ_ATTEMPTFIRST:
+                        $attempt = reset($attempts);
+                        break;
+                    case QUIZ_ATTEMPTLAST:
+                    case QUIZ_GRADEAVERAGE:
+                        $attempt = end($attempts);
+                        break;
+                    case QUIZ_GRADEHIGHEST:
+                        $maxmark = 0;
+                        foreach ($attempts as $at) {
+                            if ((float) $at->sumgrades >= $maxmark) {
+                                $maxmark = $at->sumgrades;
+                                $attempt = $at;
+                            }
+                        }
+                        break;
+                }
+                $grade = quiz_rescale_grade($attempt->sumgrades, $this->quiz, false);
+                if ($grade >= $params['gradepass']) {
+                    $numpassed++;
+                } else {
+                    $numfailed++;
+                }
+            }
             // Add passed users.
-            $numpassed = $DB->get_field_sql("
-            SELECT count(DISTINCT u.id)
-              FROM $from
-             WHERE $where AND quiza.sumgrades >= :gradepass", $params);
             $row = array($namekey => get_string('passedusers', 'quiz_randomsummary'),
                     'state' => $numpassed);
             $this->add_data_keyed($row);
 
             // Add failed users.
-            $numfailed = $DB->get_field_sql("
-            SELECT count(DISTINCT u.id)
-              FROM $from
-             WHERE $where AND quiza.sumgrades < :gradepass", $params);
             $row = array($namekey => get_string('failedusers', 'quiz_randomsummary'),
                     'state' => $numfailed);
             $this->add_data_keyed($row);
@@ -341,12 +385,14 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         $slot = $question->slot;
         // Check to see if this question was answered in any slot.
         $foundquestion = false;
-        foreach ($this->lateststeps[$attempt->usageid] as $sl) {
-            if ($sl->questionid == $questionid) {
-                $slot = $sl->slot;
-                $foundquestion = true;
-            }
 
+        if (!empty($this->lateststeps) && isset($this->lateststeps[$attempt->usageid])) {
+            foreach ($this->lateststeps[$attempt->usageid] as $sl) {
+                if ($sl->questionid == $questionid) {
+                    $slot = $sl->slot;
+                    $foundquestion = true;
+                }
+            }
         }
 
         if (!$foundquestion) {
@@ -508,7 +554,7 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
      * $manuallygraded and $all.
      */
     public function load_questions_usages_question_state_summary(
-        qubaid_condition $qubaids, $slots) {
+        qubaid_condition $qubaids, $slots = null) {
 
         $rs = $this->db->get_recordset_sql("
           SELECT qa.questionid,
