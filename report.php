@@ -65,7 +65,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             // This option is only available to users who can access all groups in
             // groups mode, so setting allowed to empty (which means all quiz attempts
             // are accessible, is not a security porblem.
-            $allowed = array();
+            $allowed = new \core\dml\sql_join();
         }
 
         // Load the required questions.
@@ -188,7 +188,7 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             foreach ($questions as $slot => $question) {
                 // Ignore questions of zero length.
                 $columns[] = 'qsgrade' . $slot;
-                $header = get_string('qbrief', 'quiz', implode($question->slots, ', '));
+                $header = get_string('qbrief', 'quiz', implode(', ', $question->slots));
                 if (!$table->is_downloading()) {
                     $header .= '<br />';
                 } else {
