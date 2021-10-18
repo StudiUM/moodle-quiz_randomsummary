@@ -21,6 +21,9 @@
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
+defined('MOODLE_INTERNAL') || die();
+
 if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configtext('quiz_randomsummary/showstudentresponse',
         get_string('showstudentresponse', 'quiz_randomsummary'),
