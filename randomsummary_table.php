@@ -399,19 +399,39 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             return get_string('notanswered', 'quiz_randomsummary'); // This random question wasn't answer by this user.
         }
 
-        if ($this->is_downloading()) {
-            $state = $this->slot_state($attempt, $slot);
-            if ($state->is_finished() && $state != question_state::$needsgrading) {
-                $fraction = $this->slot_fraction($attempt, $slot);
-                $feedbackclass = question_state::graded_state_for_fraction($fraction)->get_feedback_class();
-
-                return get_string($feedbackclass, 'question');
+        $stepdata = $this->lateststeps[$attempt->usageid][$slot];
+        $state = question_state::get($stepdata->state);
+        if ($question->maxmark == 0) {
+            $grade = '-';
+        } else if (is_null($stepdata->fraction)) {
+            if ($state == question_state::$needsgrading) {
+                $grade = get_string('requiresgrading', 'question');
+            } else {
+                $grade = '-';
             }
-            return '';
+        } else {
+            $grade = quiz_rescale_grade(
+                    $stepdata->fraction * $question->maxmark, $this->quiz, 'question');
         }
 
-        // We don't pass the grade to review link as we are just displaying state.
-        return $this->make_review_link('', $attempt, $slot);
+        if ($this->is_downloading()) {
+            return $grade;
+        }
+
+        if (isset($this->regradedqs[$attempt->usageid][$slot])) {
+            $gradefromdb = $grade;
+            $newgrade = quiz_rescale_grade(
+                    $this->regradedqs[$attempt->usageid][$slot]->newfraction * $question->maxmark,
+                    $this->quiz, 'question');
+            $oldgrade = quiz_rescale_grade(
+                    $this->regradedqs[$attempt->usageid][$slot]->oldfraction * $question->maxmark,
+                    $this->quiz, 'question');
+
+            $grade = html_writer::tag('del', $oldgrade) . '/' .
+                    html_writer::empty_tag('br') . $newgrade;
+        }
+
+        return $this->make_review_link($grade, $attempt, $slot);
     }
 
     /**
@@ -445,46 +465,6 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         return "$alias.fraction * $alias.maxmark AS qsgrade$slot";
     }
 
-    /**
-     * Only show the question status - not grade.
-     *
-     * @param string $data HTML fragment. The text to make into the link.
-     * @param object $attempt data for the row of the table being output.
-     * @param int $slot the number used to identify this question within this usage.
-     */
-    public function make_review_link($data, $attempt, $slot) {
-        global $OUTPUT;
-
-        $flag = '';
-        if ($this->is_flagged($attempt->usageid, $slot)) {
-            $flag = $OUTPUT->pix_icon('i/flagged', get_string('flagged', 'question'),
-                'moodle', array('class' => 'questionflag'));
-        }
-
-        $feedbackimg = '';
-        $state = $this->slot_state($attempt, $slot);
-        if ($state->is_finished() && $state != question_state::$needsgrading) {
-            $fraction = $this->slot_fraction($attempt, $slot);
-            $feedbackimg = $this->icon_for_fraction($fraction);
-            $feedbackclass = question_state::graded_state_for_fraction($fraction)->get_feedback_class();
-            $data = get_string($feedbackclass, 'question');
-        }
-
-        $output = html_writer::tag('span', $feedbackimg . html_writer::tag('span',
-                $data, array('class' => $state->get_state_class(true))) . $flag, array('class' => 'que'));
-
-        $reviewparams = array('attempt' => $attempt->attempt, 'slot' => $slot);
-        if (isset($attempt->try)) {
-            $reviewparams['step'] = $this->step_no_for_try($attempt->usageid, $slot, $attempt->try);
-        }
-        $url = new moodle_url('/mod/quiz/reviewquestion.php', $reviewparams);
-        $output = $OUTPUT->action_link($url, $output,
-            new popup_action('click', $url, 'reviewquestion',
-                array('height' => 450, 'width' => 650)),
-            array('title' => get_string('reviewresponse', 'quiz')));
-
-        return $output;
-    }
     /**
      * Load information about the latest state of selected questions in selected attempts.
      * The questions array keys aren't the slot numbers so we need to get just the slots.
