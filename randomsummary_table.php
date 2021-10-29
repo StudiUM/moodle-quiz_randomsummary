@@ -506,14 +506,6 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $slots[] = $question->slot;
         }
 
-        // Check to see if we need to pull in any other slots/questions - used to display the student response to certain questions.
-        $responsecolumnconfig = get_config('quiz_randomsummary', 'showstudentresponse');
-        if (!empty($responsecolumnconfig)) {
-            $responsecolumns = explode(',', $responsecolumnconfig);
-            foreach ($responsecolumns as $rc) {
-                $slots[] = $rc;
-            }
-        }
         if (empty($slots)) {
             // No Random Questions found.
             return array();
