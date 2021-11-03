@@ -38,6 +38,12 @@ require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/randomsummary_table
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quiz_randomsummary_report extends quiz_attempts_report {
+
+    /**
+     * @var bool whether there are actually students to show, given the options.
+     */
+    protected $hasgroupstudents;
+
     /**
      * Display the random summary form.
      * @param stdClass $quiz record from quiz table.

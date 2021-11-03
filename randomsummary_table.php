@@ -27,6 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_table.php');
 require_once($CFG->libdir . '/gradelib.php');
+require_once($CFG->libdir . '/mathslib.php');
 
 
 /**
@@ -36,6 +37,12 @@ require_once($CFG->libdir . '/gradelib.php');
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quiz_randomsummary_table extends quiz_attempts_report_table {
+
+    /** @var array data containing questions grades */
+    protected $datacolumns = [];
+
+    /** @var Array Array of attempts ids in the report. */
+    protected $attemptsids = [];
 
     /**
      * Constructor
@@ -133,18 +140,21 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         if (!empty($record->duration)) {
             $averagerow['duration'] = format_time($record->duration);
         }
-
-        // Average grades row.
-        $this->add_data_keyed($averagerow);
-
-        // Get statistics on question usage.
-        $dm = new quiz_randomsummary_question_engine_data_mapper();
-        $qubaids = new qubaid_join($from, 'quiza.uniqueid', $where, $params);
         $slots = array();
 
         foreach ($this->questions as $qa) {
             $slots[] = $qa->slot;
         }
+        // Add grade average for questions.
+        $dm = new quiz_randomsummary_question_engine_data_mapper();
+        $qubaids = new qubaid_join($from, 'quiza.uniqueid', $where, $params);
+        $avggradebyq = $dm->load_questions_average_marks($qubaids);
+        $averagerow += $this->format_average_grade_for_questions($avggradebyq);
+
+        // Average grades row.
+        $this->add_data_keyed($averagerow);
+
+        // Get statistics on question usage.
         // No Random questions found.
         if (empty($slots)) {
             return;
@@ -291,9 +301,9 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $gradeaverages = array();
         }
 
-        foreach ($this->questions as $question) {
-            if (isset($gradeaverages[$question->slot]) && $question->maxmark > 0) {
-                $record = $gradeaverages[$question->slot];
+        foreach ($this->questions as $questionid => $question) {
+            if (isset($gradeaverages[$questionid]) && $question->maxmark > 0) {
+                $record = $gradeaverages[$questionid];
                 $record->grade = quiz_rescale_grade(
                         $record->averagefraction * $question->maxmark, $this->quiz, false);
 
@@ -303,7 +313,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                 $record->numaveraged = 0;
             }
 
-            $row['qsgrade' . $question->slot] = $this->format_average($record, true);
+            $row['qsgrade' . $questionid] = $this->format_average($record, true);
         }
 
         return $row;
@@ -413,6 +423,13 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $grade = quiz_rescale_grade(
                     $stepdata->fraction * $question->maxmark, $this->quiz, 'question');
         }
+
+        if (!isset($this->datacolumns[$colname])) {
+            $this->datacolumns[$colname] = floatval(calc_formula::unlocalize($grade));
+        } else {
+            $this->datacolumns[$colname] += floatval(calc_formula::unlocalize($grade));
+        }
+        $this->attemptsids[$colname][] = $attempt->attempt;
 
         if ($this->is_downloading()) {
             return $grade;
@@ -569,5 +586,30 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
         $rs->close();
 
         return $results;
+    }
+
+    /**
+     * Load the average mark, and number of attempts, for each question.
+     *
+     * @param qubaid_condition $qubaids used to restrict which usages are included
+     * in the query.
+     * @return array of objects with fields ->questionid, ->averagefraction and ->numaveraged.
+     */
+    public function load_questions_average_marks(qubaid_condition $qubaids) {
+
+        return $this->db->get_records_sql("
+               SELECT   qa.questionid,
+                        AVG(COALESCE(qas.fraction, 0)) AS averagefraction,
+                        COUNT(1) AS numaveraged
+
+                FROM    {$qubaids->from_question_attempts('qa')}
+                JOIN    {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                        AND qas.sequencenumber = {$this->latest_step_for_qa_subquery()}
+
+               WHERE    {$qubaids->where()}
+
+            GROUP BY    qa.questionid
+
+            ORDER BY qa.questionid", $qubaids->from_where_params());
     }
 }
