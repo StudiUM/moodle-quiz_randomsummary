@@ -22,13 +22,11 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_table.php');
 require_once($CFG->libdir . '/gradelib.php');
 require_once($CFG->libdir . '/mathslib.php');
-
 
 /**
  * This is a table subclass for displaying the quiz grades report.
@@ -251,6 +249,9 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $numpassed = 0;
             foreach ($users as $user) {
                 $attempts = quiz_get_user_attempts($this->quiz->id, $user->userid, 'finished');
+                if (empty($attempts)) {
+                    continue;
+                }
                 $attempt = null;
                 switch ($this->quiz->grademethod) {
                     case QUIZ_ATTEMPTFIRST:
@@ -290,15 +291,15 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
     }
 
     /**
-     * Helper userd by {@link add_average_row()}.
+     * Helper userd by add_average_row method.
      * @param array $gradeaverages the raw grades.
      * @return array the (partial) row of data.
      */
     protected function format_average_grade_for_questions($gradeaverages) {
-        $row = array();
+        $row = [];
 
         if (!$gradeaverages) {
-            $gradeaverages = array();
+            $gradeaverages = [];
         }
 
         foreach ($this->questions as $questionid => $question) {
@@ -308,9 +309,10 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                         $record->averagefraction * $question->maxmark, $this->quiz, false);
 
             } else {
-                $record = new stdClass();
-                $record->grade = null;
-                $record->numaveraged = 0;
+                $record = (object) [
+                    'grade' => null,
+                    'numaveraged' => 0,
+                ];
             }
 
             $row['qsgrade' . $questionid] = $this->format_average($record, true);
@@ -348,7 +350,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
 
     /**
      * Return the column with the sumgrades field.
-     * @param stdClass $attempt
+     * @param object $attempt
      * @return string
      */
     public function col_sumgrades($attempt) {
@@ -376,41 +378,30 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
      * @return string the contents of the cell.
      */
     public function other_cols($colname, $attempt) {
-        // If this is trying to display the student response to a question, pull it out.
-        if (preg_match('/^qsresponse(\d+)$/', $colname, $matches)) {
-            if (isset($this->lateststeps[$attempt->usageid][$matches[1]])) {
-                return $this->lateststeps[$attempt->usageid][$matches[1]]->responsesummary;
-            }
-            return '';
-        }
-
         // The only other column supported here is the grade, return null if for something else.
         if (!preg_match('/^qsgrade(\d+)$/', $colname, $matches)) {
             return null;
         }
+        if (!isset($this->lateststeps[$attempt->usageid])) {
+            return '-';
+        }
+        $qid = $matches[1];
+        $usageidquestions = $this->lateststeps[$attempt->usageid];
 
-        $questionid = $matches[1];
+        // Retrieving the question id in the question usage.
+        $question = array_filter($usageidquestions, function ($obj) use ($qid) {
+            return $obj->questionid == $qid;
+        });
 
-        $question = $this->questions[$questionid];
+        if (empty($question)) {
+            return '-';
+        } else {
+            $question = array_shift($question);
+        }
         $slot = $question->slot;
-        // Check to see if this question was answered in any slot.
-        $foundquestion = false;
-
-        if (!empty($this->lateststeps) && isset($this->lateststeps[$attempt->usageid])) {
-            foreach ($this->lateststeps[$attempt->usageid] as $sl) {
-                if ($sl->questionid == $questionid) {
-                    $slot = $sl->slot;
-                    $foundquestion = true;
-                }
-            }
-        }
-
-        if (!$foundquestion) {
-            return get_string('notanswered', 'quiz_randomsummary'); // This random question wasn't answer by this user.
-        }
-
         $stepdata = $this->lateststeps[$attempt->usageid][$slot];
         $state = question_state::get($stepdata->state);
+
         if ($question->maxmark == 0) {
             $grade = '-';
         } else if (is_null($stepdata->fraction)) {
@@ -423,13 +414,6 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             $grade = quiz_rescale_grade(
                     $stepdata->fraction * $question->maxmark, $this->quiz, 'question');
         }
-
-        if (!isset($this->datacolumns[$colname])) {
-            $this->datacolumns[$colname] = floatval(calc_formula::unlocalize($grade));
-        } else {
-            $this->datacolumns[$colname] += floatval(calc_formula::unlocalize($grade));
-        }
-        $this->attemptsids[$colname][] = $attempt->attempt;
 
         if ($this->is_downloading()) {
             return $grade;
@@ -454,7 +438,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
     /**
      * This report requires the detailed information for each question from the
      * question_attempts_steps table.
-     * @return bool should {@link load_extra_data} call {@link load_question_latest_steps}?
+     * @return bool should load_extra_data call load_question_latest_steps ?
      */
     protected function requires_latest_steps_loaded() {
         return true;
@@ -489,7 +473,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
      * The results are returned as an two dimensional array $qubaid => $slot => $dataobject
      *
      * @param qubaid_condition $qubaids used to restrict which usages are included
-     * in the query. See {@link qubaid_condition}.
+     * in the query. See qubaid_condition class.
      * @return array of records. See the SQL in this function to see the fields available.
      */
     protected function load_question_latest_steps(qubaid_condition $qubaids = null) {
@@ -498,20 +482,20 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         }
         $dm = new question_engine_data_mapper();
         // Get Slot ids from $this->questions.
-        $slots = array();
+        $slots = [];
         foreach ($this->questions as $question) {
             $slots[] = $question->slot;
         }
 
         if (empty($slots)) {
             // No Random Questions found.
-            return array();
+            return [];
         }
 
         $latesstepdata = $dm->load_questions_usages_latest_steps(
-            $qubaids, array_keys($slots));
+            $qubaids, $slots);
 
-        $lateststeps = array();
+        $lateststeps = [];
         foreach ($latesstepdata as $step) {
             $lateststeps[$step->questionusageid][$step->slot] = $step;
         }
@@ -536,7 +520,7 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
      * This method may be called publicly.
      *
      * @param qubaid_condition $qubaids used to restrict which usages are included
-     * in the query. See {@link qubaid_condition}.
+     * in the query. See qubaid_condition class.
      * @param array $slots A list of slots for the questions you want to konw about.
      * @return array The array keys are slot,qestionid. The values are objects with
      * fields $slot, $questionid, $inprogress, $name, $needsgrading, $autograded,
@@ -573,10 +557,11 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
         $results = array();
         foreach ($rs as $row) {
             if (!array_key_exists($row->questionid, $results)) {
-                $res = new stdClass();
-                $res->questionid = $row->questionid;
-                $res->name = $row->name;
-                $res->all = 0;
+                $res = (object) [
+                    'questionid' => $row->questionid,
+                    'name' => $row->name,
+                    'all' => 0,
+                ];
                 $results[$row->questionid] = $res;
             }
             $results[$row->questionid]->{$row->state} = $row->numstate;

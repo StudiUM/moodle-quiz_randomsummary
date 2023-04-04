@@ -22,14 +22,12 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport.php');
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/randomsummary_options.php');
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/randomsummary_form.php');
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/randomsummary_table.php');
-
+require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/form/randomsummary_form.php');
+require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_options.php');
+require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_table.php');
 
 /**
  * Quiz report subclass for the randomsummary report.
@@ -73,35 +71,39 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             // are accessible, is not a security porblem.
             $allowed = new \core\dml\sql_join();
         }
-
-        // Load the required questions.
-        // First get all Random questions within this quiz.
-        $idfield = $DB->sql_concat('q2.id', 'slot.slot');
-        $questionsraw = $DB->get_records_sql("
-            SELECT $idfield as id, q2.id as q2id, q.id as qid, slot.slot, q2.length, slot.maxmark, q2.name
-              FROM {question} q
-              JOIN {quiz_slots} slot ON slot.questionid = q.id
-              JOIN {question} q2 on q.category = q2.category
-             WHERE slot.quizid = ?
-               AND q.length > 0
-               AND q.qtype = 'random'
-               AND q2.qtype <> 'random'
-          ORDER BY slot.slot", array($quiz->id));
-        $number = 1;
-        $questions = array();
-        foreach ($questionsraw as $question) {
-            if (!isset($questions[$question->q2id])) {
-                $questions[$question->q2id] = $question;
-                $questions[$question->q2id]->slots = array();
+        $quizcontext = context_module::instance($cm->id);
+        $sql = "SELECT DISTINCT qu.id AS questionusageid, q.*, qa.maxmark, slots.slot
+                           FROM {question_usages} qu
+                      LEFT JOIN {question_attempts} qa ON qa.questionusageid = qu.id
+                      LEFT JOIN {quiz_slots} slots ON slots.slot = qa.slot
+                      LEFT JOIN {question_set_references} qsr ON qsr.usingcontextid = qu.contextid AND qsr.itemid = slots.id
+                      LEFT JOIN {question} q ON q.id = qa.questionid
+                          WHERE qu.contextid = :quizcontextid AND qu.component = 'mod_quiz'
+                            AND slots.quizid = :quizid AND qsr.filtercondition IS NOT NULL";
+        // Using record set, mostly because of same qu.id may happen.
+        $rs = $DB->get_recordset_sql($sql, ['quizcontextid' => $quizcontext->id, 'quizid' => $quiz->id]);
+        $questions = [];
+        if ($rs->valid()) {
+            // The recordset contains some records.
+            foreach ($rs as $record) {
+                $questions[] = $record;
             }
-            $questions[$question->q2id]->slots[] = $question->slot;
-            $questions[$question->q2id]->number = $number;
-            $number += $questions[$question->q2id]->length;
+            $rs->close();
         }
-
+        $rs->close();
+        // Sorting questions by slots.
+        usort($questions, function($a, $b) {
+            return $a->slot - $b->slot;
+        });
+        // Giving a unique identifier for every question usage for questions array.
+        foreach ($questions as $key => $question) {
+            $newkey = $question->questionusageid . ',' . $question->slot . ',' . $question->id;
+            $questions[$newkey] = $question;
+            unset($questions[$key]);
+        }
         // Prepare for downloading, if applicable.
         $courseshortname = format_string($course->shortname, true,
-                array('context' => context_course::instance($course->id)));
+                ['context' => context_course::instance($course->id)]);
         $table = new quiz_randomsummary_table($quiz, $this->context, $this->qmsubselect,
                 $options, $groupstudents, $students, $questions, $options->get_url());
         $filename = quiz_report_download_filename(get_string('randomsummaryfilename', 'quiz_randomsummary'),
@@ -177,12 +179,13 @@ class quiz_randomsummary_report extends quiz_attempts_report {
             }
 
             // Define table columns.
-            $columns = array();
-            $headers = array();
+            $columns = [];
+            $headers = [];
 
             if (!$table->is_downloading() && $options->checkboxcolumn) {
-                $columns[] = 'checkbox';
-                $headers[] = null;
+                $columnname = 'checkbox';
+                $columns[] = $columnname;
+                $headers[] = $table->checkbox_col_header($columnname);
             }
 
             $this->add_user_columns($table, $columns, $headers);
@@ -191,17 +194,20 @@ class quiz_randomsummary_report extends quiz_attempts_report {
 
             $this->add_grade_columns($quiz, $options->usercanseegrades, $columns, $headers, false);
 
-            foreach ($questions as $slot => $question) {
-                // Ignore questions of zero length.
-                $columns[] = 'qsgrade' . $slot;
-                $header = get_string('qbrief', 'quiz', implode(', ', $question->slots));
-                if (!$table->is_downloading()) {
-                    $header .= '<br />';
-                } else {
-                    $header .= ' ';
+            foreach ($questions as $key => $question) {
+                $qid = explode(',', $key)[2];
+                // We need only one column per question id.
+                if (!in_array('qsgrade' . $qid, $columns)) {
+                    $columns[] = 'qsgrade' . $qid;
+                    $header = get_string('qbrief', 'quiz', $question->slot);
+                    if (!$table->is_downloading()) {
+                        $header .= '<br />';
+                    } else {
+                        $header .= ' ';
+                    }
+                    $header .= '/ ' . $question->name;
+                    $headers[] = $header;
                 }
-                $header .= '/' . $question->name;
-                $headers[] = $header;
             }
 
             $this->set_up_table_columns($table, $columns, $headers, $this->get_base_url(), $options, false);

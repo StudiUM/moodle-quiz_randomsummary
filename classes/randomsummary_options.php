@@ -15,38 +15,35 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * This file defines the setting form for the quiz random summary report.
+ * Class to store the options for a quiz randomsummary report.
  *
  * @package   quiz_randomsummary
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_form.php');
-
+require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_options.php');
 
 /**
- * Quiz random summary report settings form.
+ * Class to store the options for a quiz randomsummary report.
  *
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_settings_form extends mod_quiz_attempts_report_form {
+class quiz_randomsummary_options extends mod_quiz_attempts_report_options {
 
     /**
-     * Allows the randomsummary report to add extra fields to the attempts area of the form.
-     * @param MoodleQuickForm $mform
+     * Overrides to set if user can delete attempts.
      */
-    protected function other_attempt_fields(MoodleQuickForm $mform) {
-    }
+    public function resolve_dependencies() {
+        parent::resolve_dependencies();
 
-    /**
-     * Allows the randomsummary report to add extra fields to the preferences area of the form,
-     * @param MoodleQuickForm $mform
-     */
-    protected function other_preference_fields(MoodleQuickForm $mform) {
+        // We only want to show the checkbox to delete attempts
+        // if the user has permissions and if the report mode is showing attempts.
+        $this->checkboxcolumn = has_any_capability(
+                array('mod/quiz:deleteattempts'), context_module::instance($this->cm->id))
+                && ($this->attempts != quiz_attempts_report::ENROLLED_WITHOUT);
     }
 }
