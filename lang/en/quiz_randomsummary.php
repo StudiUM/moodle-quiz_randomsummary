@@ -46,6 +46,7 @@ $string['pluginname'] = 'Random question summary';
 $string['preferencespage'] = 'Preferences just for this page';
 $string['preferencessave'] = 'Show report';
 $string['preferencesuser'] = 'Your preferences for this report';
+$string['privacy:metadata'] = 'This plugin does not store any user related data.';
 $string['show'] = 'Show / download';
 $string['showattempts'] = 'Only show / download attempts';
 $string['showinggraded'] = 'Showing only the attempt graded for each user.';
