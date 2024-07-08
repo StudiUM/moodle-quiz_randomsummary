@@ -24,7 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport.php');
+use mod_quiz\local\reports\attempts_report;
 require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/form/randomsummary_form.php');
 require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_options.php');
 require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_table.php');
@@ -35,7 +35,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsumma
  * @copyright 1999 onwards Martin Dougiamas and others {@link http://moodle.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_report extends quiz_attempts_report {
+class quiz_randomsummary_report extends attempts_report {
 
     /**
      * @var bool whether there are actually students to show, given the options.

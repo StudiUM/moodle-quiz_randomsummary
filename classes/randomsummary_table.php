@@ -24,7 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_table.php');
+use mod_quiz\local\reports\attempts_report_table;
+use mod_quiz\quiz_attempt;
 require_once($CFG->libdir . '/gradelib.php');
 require_once($CFG->libdir . '/mathslib.php');
 
@@ -34,12 +35,12 @@ require_once($CFG->libdir . '/mathslib.php');
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_table extends quiz_attempts_report_table {
+class quiz_randomsummary_table extends attempts_report_table {
 
     /** @var array data containing questions grades */
     protected $datacolumns = [];
 
-    /** @var Array Array of attempts ids in the report. */
+    /** @var array Array of attempts ids in the report. */
     protected $attemptsids = [];
 
     /**
@@ -123,12 +124,12 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         } else {
             $namekey = 'fullname';
         }
-        $averagerow = array(
+        $averagerow = [
             $namekey    => $label,
             'sumgrades' => $this->format_average($record),
             'feedbacktext' => strip_tags(quiz_report_feedback_for_grade(
-                                        $record->grade, $this->quiz->id, $this->context))
-        );
+                                        $record->grade, $this->quiz->id, $this->context)),
+        ];
 
         // Now calculate average duration.
         $record = $DB->get_record_sql("
@@ -138,7 +139,7 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         if (!empty($record->duration)) {
             $averagerow['duration'] = format_time($record->duration);
         }
-        $slots = array();
+        $slots = [];
 
         foreach ($this->questions as $qa) {
             $slots[] = $qa->slot;
@@ -160,9 +161,9 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         $attempts = $dm->load_questions_usages_question_state_summary($qubaids, $slots);
         // I don't like this array hard-coded here, seems fragile.
         // There is probably a better way to translate this using internal functions.
-        $states = array('gradedright', 'gradedpartial', 'gradedwrong', 'all');
+        $states = ['gradedright', 'gradedpartial', 'gradedwrong', 'all'];
         foreach ($states as $state) {
-            $staterow = array();
+            $staterow = [];
             foreach ($attempts as $attempt) {
                 if (!empty($attempt->$state)) {
                     $staterow['qsgrade' . $attempt->questionid] = $attempt->$state;
@@ -187,8 +188,8 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                   FROM $from
                  WHERE quiza.preview is NOT NULL AND $where", $params);
         if (!empty($value)) {
-            $row = array($namekey => get_string('totalattempts', 'quiz_randomsummary'),
-                'state' => $value);
+            $row = [$namekey => get_string('totalattempts', 'quiz_randomsummary'),
+                'state' => $value];
             $this->add_data_keyed($row);
         }
 
@@ -198,8 +199,8 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                   FROM $from
                  WHERE $where", $params);
         if (!empty($value)) {
-            $row = array($namekey => get_string('totalusers', 'quiz_randomsummary'),
-                'state' => $value);
+            $row = [$namekey => get_string('totalusers', 'quiz_randomsummary'),
+                'state' => $value];
             $this->add_data_keyed($row);
         }
 
@@ -211,13 +212,13 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                     WHERE $where
                     GROUP BY quiza.userid) attempts", $params);
         if (!empty($value)) {
-            $row = array($namekey => get_string('averageattempts', 'quiz_randomsummary'),
-                'state' => round($value, 2));
+            $row = [$namekey => get_string('averageattempts', 'quiz_randomsummary'),
+                'state' => round($value, 2)];
             $this->add_data_keyed($row);
         }
         // Check to see if a passing grade is set and if so display stats on pass/fail.
-        $item = grade_item::fetch(array('courseid' => $this->quiz->course, 'itemtype' => 'mod',
-            'itemmodule' => 'quiz', 'iteminstance' => $this->quiz->id, 'outcomeid' => null));
+        $item = grade_item::fetch(['courseid' => $this->quiz->course, 'itemtype' => 'mod',
+            'itemmodule' => 'quiz', 'iteminstance' => $this->quiz->id, 'outcomeid' => null]);
         if (!empty($item->gradepass)) {
             $users = $DB->get_records_sql("
                 SELECT DISTINCT quiza.userid
@@ -232,8 +233,8 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             SELECT count(*) as numpassed
               FROM $from
              WHERE $where AND (quiza.sumgrades * :qgrade / :qsumgrades) >= :gradepass", $params);
-            $row = array($namekey => get_string('passedattempts', 'quiz_randomsummary'),
-                       'state' => $numpassed);
+            $row = [$namekey => get_string('passedattempts', 'quiz_randomsummary'),
+                       'state' => $numpassed];
             $this->add_data_keyed($row);
 
             // Add Failed Attempts.
@@ -241,8 +242,8 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             SELECT count(*)
               FROM $from
              WHERE $where AND (quiza.sumgrades * :qgrade / :qsumgrades) < :gradepass", $params);
-            $row = array($namekey => get_string('failedattempts', 'quiz_randomsummary'),
-                    'state' => $numfailed);
+            $row = [$namekey => get_string('failedattempts', 'quiz_randomsummary'),
+                    'state' => $numfailed];
             $this->add_data_keyed($row);
 
             $numfailed = 0;
@@ -279,13 +280,13 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
                 }
             }
             // Add passed users.
-            $row = array($namekey => get_string('passedusers', 'quiz_randomsummary'),
-                    'state' => $numpassed);
+            $row = [$namekey => get_string('passedusers', 'quiz_randomsummary'),
+                    'state' => $numpassed];
             $this->add_data_keyed($row);
 
             // Add failed users.
-            $row = array($namekey => get_string('failedusers', 'quiz_randomsummary'),
-                    'state' => $numfailed);
+            $row = [$namekey => get_string('failedusers', 'quiz_randomsummary'),
+                    'state' => $numfailed];
             $this->add_data_keyed($row);
         }
     }
@@ -339,12 +340,12 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
             return $average;
         } else if (is_null($record->numaveraged) || $record->numaveraged == 0) {
             return html_writer::tag('span', html_writer::tag('span',
-                    $average, array('class' => 'average')), array('class' => 'avgcell'));
+                    $average, ['class' => 'average']), ['class' => 'avgcell']);
         } else {
             return html_writer::tag('span', html_writer::tag('span',
-                    $average, array('class' => 'average')) . ' ' . html_writer::tag('span',
-                    '(' . $record->numaveraged . ')', array('class' => 'count')),
-                    array('class' => 'avgcell'));
+                    $average, ['class' => 'average']) . ' ' . html_writer::tag('span',
+                    '(' . $record->numaveraged . ')', ['class' => 'count']),
+                    ['class' => 'avgcell']);
         }
     }
 
@@ -364,8 +365,8 @@ class quiz_randomsummary_table extends quiz_attempts_report_table {
         }
 
         return html_writer::link(new moodle_url('/mod/quiz/review.php',
-                array('attempt' => $attempt->attempt)), $grade,
-                array('title' => get_string('reviewattempt', 'quiz')));
+                ['attempt' => $attempt->attempt]), $grade,
+                ['title' => get_string('reviewattempt', 'quiz')]);
     }
 
     /**
@@ -554,7 +555,7 @@ class quiz_randomsummary_question_engine_data_mapper extends question_engine_dat
            q.id
            ", $qubaids->from_where_params());
 
-        $results = array();
+        $results = [];
         foreach ($rs as $row) {
             if (!array_key_exists($row->questionid, $results)) {
                 $res = (object) [

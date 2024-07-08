@@ -22,9 +22,8 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
-require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_options.php');
+use mod_quiz\local\reports\attempts_report_options;
+use mod_quiz\local\reports\attempts_report;
 
 /**
  * Class to store the options for a quiz randomsummary report.
@@ -32,7 +31,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_options.php');
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_options extends mod_quiz_attempts_report_options {
+class quiz_randomsummary_options extends attempts_report_options {
 
     /**
      * Overrides to set if user can delete attempts.
@@ -43,7 +42,7 @@ class quiz_randomsummary_options extends mod_quiz_attempts_report_options {
         // We only want to show the checkbox to delete attempts
         // if the user has permissions and if the report mode is showing attempts.
         $this->checkboxcolumn = has_any_capability(
-                array('mod/quiz:deleteattempts'), context_module::instance($this->cm->id))
-                && ($this->attempts != quiz_attempts_report::ENROLLED_WITHOUT);
+                ['mod/quiz:deleteattempts'], context_module::instance($this->cm->id))
+                && ($this->attempts != attempts_report::ENROLLED_WITHOUT);
     }
 }

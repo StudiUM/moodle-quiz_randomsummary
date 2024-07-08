@@ -22,9 +22,7 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
-require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_form.php');
+use mod_quiz\local\reports\attempts_report_options_form;
 
 /**
  * Quiz random summary report settings form.
@@ -32,7 +30,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/attemptsreport_form.php');
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_settings_form extends mod_quiz_attempts_report_form {
+class quiz_randomsummary_settings_form extends attempts_report_options_form {
 
     /**
      * Allows the randomsummary report to add extra fields to the attempts area of the form.

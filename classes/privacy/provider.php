@@ -17,14 +17,12 @@
 /**
  * Privacy Subsystem implementation for quiz_randomsummary.
  *
- * @package    quiz_statistics
+ * @package    quiz_randomsummary
  * @copyright  2023 Université de Montréal
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 namespace quiz_randomsummary\privacy;
-
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Privacy Subsystem for quiz_randomsummary implementing null_provider.
@@ -40,7 +38,7 @@ class provider implements \core_privacy\local\metadata\null_provider {
      *
      * @return  string
      */
-    public static function get_reason() : string {
+    public static function get_reason(): string {
         return 'privacy:metadata';
     }
 }
