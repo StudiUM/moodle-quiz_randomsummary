@@ -22,6 +22,8 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace quiz_randomsummary\form;
+use MoodleQuickForm;
 use mod_quiz\local\reports\attempts_report_options_form;
 
 /**
@@ -30,8 +32,7 @@ use mod_quiz\local\reports\attempts_report_options_form;
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_settings_form extends attempts_report_options_form {
-
+class randomsummary_form extends attempts_report_options_form {
     /**
      * Allows the randomsummary report to add extra fields to the attempts area of the form.
      * @param MoodleQuickForm $mform
