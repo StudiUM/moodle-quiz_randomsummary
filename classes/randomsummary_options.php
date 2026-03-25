@@ -22,8 +22,10 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-use mod_quiz\local\reports\attempts_report_options;
+namespace quiz_randomsummary;
+use context_module;
 use mod_quiz\local\reports\attempts_report;
+use mod_quiz\local\reports\attempts_report_options;
 
 /**
  * Class to store the options for a quiz randomsummary report.
@@ -31,8 +33,7 @@ use mod_quiz\local\reports\attempts_report;
  * @copyright 2015 Dan Marsden http://danmarsden.com
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_randomsummary_options extends attempts_report_options {
-
+class randomsummary_options extends attempts_report_options {
     /**
      * Overrides to set if user can delete attempts.
      */
@@ -42,7 +43,9 @@ class quiz_randomsummary_options extends attempts_report_options {
         // We only want to show the checkbox to delete attempts
         // if the user has permissions and if the report mode is showing attempts.
         $this->checkboxcolumn = has_any_capability(
-                ['mod/quiz:deleteattempts'], context_module::instance($this->cm->id))
+            ['mod/quiz:deleteattempts'],
+            context_module::instance($this->cm->id)
+        )
                 && ($this->attempts != attempts_report::ENROLLED_WITHOUT);
     }
 }

@@ -22,12 +22,10 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 use mod_quiz\local\reports\attempts_report;
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/form/randomsummary_form.php');
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_options.php');
-require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsummary_table.php');
+use quiz_randomsummary\randomsummary_table;
+use quiz_randomsummary\randomsummary_options;
+use quiz_randomsummary\form\randomsummary_form;
 
 /**
  * Quiz report subclass for the randomsummary report.
@@ -36,11 +34,13 @@ require_once($CFG->dirroot . '/mod/quiz/report/randomsummary/classes/randomsumma
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quiz_randomsummary_report extends attempts_report {
-
     /**
      * @var bool whether there are actually students to show, given the options.
      */
     protected $hasgroupstudents;
+
+    /** @var \stdClass course record used by process_actions. */
+    protected $course;
 
     /**
      * Display the random summary form.
@@ -52,13 +52,12 @@ class quiz_randomsummary_report extends attempts_report {
     public function display($quiz, $cm, $course) {
         global $DB, $OUTPUT;
 
-        list($currentgroup, $students, $groupstudents, $allowed)
-            = $this->init('randomsummary', 'quiz_randomsummary_settings_form', $quiz, $cm, $course);
-        $options = new quiz_randomsummary_options('randomsummary', $quiz, $cm, $course);
+        [$currentgroup, $students, $groupstudents, $allowed]
+            = $this->init('randomsummary', randomsummary_form::class, $quiz, $cm, $course);
+        $options = new randomsummary_options('randomsummary', $quiz, $cm, $course);
 
         if ($fromform = $this->form->get_data()) {
             $options->process_settings_from_form($fromform);
-
         } else {
             $options->process_settings_from_params();
         }
@@ -92,7 +91,7 @@ class quiz_randomsummary_report extends attempts_report {
         }
         $rs->close();
         // Sorting questions by slots.
-        usort($questions, function($a, $b) {
+        usort($questions, function ($a, $b) {
             return $a->slot - $b->slot;
         });
         // Giving a unique identifier for every question usage for questions array.
@@ -102,14 +101,31 @@ class quiz_randomsummary_report extends attempts_report {
             unset($questions[$key]);
         }
         // Prepare for downloading, if applicable.
-        $courseshortname = format_string($course->shortname, true,
-                ['context' => context_course::instance($course->id)]);
-        $table = new quiz_randomsummary_table($quiz, $this->context, $this->qmsubselect,
-                $options, $groupstudents, $students, $questions, $options->get_url());
-        $filename = quiz_report_download_filename(get_string('randomsummaryfilename', 'quiz_randomsummary'),
-                $courseshortname, $quiz->name);
-        $table->is_downloading($options->download, $filename,
-                $courseshortname . ' ' . format_string($quiz->name, true));
+        $courseshortname = format_string(
+            $course->shortname,
+            true,
+            ['context' => context_course::instance($course->id)]
+        );
+        $table = new randomsummary_table(
+            $quiz,
+            $this->context,
+            $this->qmsubselect,
+            $options,
+            $groupstudents,
+            $students,
+            $questions,
+            $options->get_url()
+        );
+        $filename = quiz_report_download_filename(
+            get_string('randomsummaryfilename', 'quiz_randomsummary'),
+            $courseshortname,
+            $quiz->name
+        );
+        $table->is_downloading(
+            $options->download,
+            $filename,
+            $courseshortname . ' ' . format_string($quiz->name, true)
+        );
         if ($table->is_downloading()) {
             raise_memory_limit(MEMORY_EXTRA);
         }
@@ -158,7 +174,7 @@ class quiz_randomsummary_report extends attempts_report {
             $fields = $DB->sql_concat('u.id', "'#'", 'COALESCE(quiza.attempt, 0)') .
                     ' AS uniqueid, ';
 
-            list($fields, $from, $where, $params) = $table->base_sql($allowed);
+            [$fields, $from, $where, $params] = $table->base_sql($allowed);
 
             $table->set_count_sql("SELECT COUNT(1) FROM $from WHERE $where", $params);
 
@@ -172,8 +188,13 @@ class quiz_randomsummary_report extends attempts_report {
 
             if (!$table->is_downloading()) {
                 // Print information on the grading method.
-                if ($strattempthighlight = quiz_report_highlighting_grading_method(
-                        $quiz, $this->qmsubselect, $options->onlygraded)) {
+                if (
+                    $strattempthighlight = quiz_report_highlighting_grading_method(
+                        $quiz,
+                        $this->qmsubselect,
+                        $options->onlygraded
+                    )
+                ) {
                     echo '<div class="quizattemptcounts">' . $strattempthighlight . '</div>';
                 }
             }
